@@ -1,0 +1,112 @@
+---
+# Windows build of the current master branch.
+#
+# Upstream removed its CI workflows in da5a4e3 (2025-07-13) and the latest
+# upstream release (v0.4.6) predates the backport of the fix for
+# CVE-2026-32253 / GHSA-ph75-mgxh-mv57 (merged in #1496). This workflow is
+# based on the removed ci-windows.yml and only builds the Windows installer
+# and portable zip, so patched builds can be produced from master.
+name: Build Windows
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build_windows:
+    name: Windows-AMD64
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      MSYSTEM: ucrt64
+      TOOLCHAIN: ucrt-x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # docs/building.md: use the official Node.js build, not the MSYS2 one
+      # (the MSYS2 package crashes on process init with the gcc-16 libstdc++).
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ucrt64
+          update: true
+          path-type: inherit
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-cppwinrt
+            mingw-w64-ucrt-x86_64-curl-winssl
+            mingw-w64-ucrt-x86_64-MinHook
+            mingw-w64-ucrt-x86_64-miniupnpc
+            mingw-w64-ucrt-x86_64-nlohmann-json
+            mingw-w64-ucrt-x86_64-nsis
+            mingw-w64-ucrt-x86_64-onevpl
+            mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-opus
+            mingw-w64-ucrt-x86_64-toolchain
+
+      - name: Show tool versions
+        run: |
+          which node npm cmake gcc
+          node --version
+          npm --version
+          cmake --version | head -1
+          gcc --version | head -1
+
+      - name: Build
+        env:
+          BRANCH: ${{ github.ref_name }}
+          BUILD_VERSION: 0.4.6.${{ github.run_number }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          cmake \
+            -B build \
+            -G Ninja \
+            -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSUNSHINE_ASSETS_DIR=assets \
+            -DSUNSHINE_PUBLISHER_NAME='${{ github.repository_owner }}' \
+            -DSUNSHINE_PUBLISHER_WEBSITE='https://github.com/${{ github.repository }}' \
+            -DSUNSHINE_PUBLISHER_ISSUE_URL='https://github.com/${{ github.repository }}/issues'
+          ninja -C build
+
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          cd build
+          cpack -G NSIS
+          cpack -G ZIP
+          ls -la cpack_artifacts
+          mv ./cpack_artifacts/*.exe ../artifacts/Apollo-${{ github.run_number }}-Windows-AMD64-installer.exe
+          mv ./cpack_artifacts/*.zip ../artifacts/Apollo-${{ github.run_number }}-Windows-AMD64-portable.zip
+
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum * | tee SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Apollo-Windows-AMD64-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: error
