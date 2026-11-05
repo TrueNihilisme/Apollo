@@ -37,6 +37,40 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      # SudoVDA.dll (the virtual display driver) and nefconc.exe (used by
+      # install.bat to create the device node) are not in git: *.dll and *.exe
+      # are in .gitignore. Take them from the official v0.4.6 installer
+      # (pinned by sha256) and check that its sudovda.cat is identical to the
+      # one in this tree, so the driver signature catalog matches the DLL.
+      - name: Fetch SudoVDA binaries from the official v0.4.6 installer
+        shell: pwsh
+        env:
+          APOLLO_046_URL: https://github.com/ClassicOldSong/Apollo/releases/download/v0.4.6/Apollo-0.4.6.exe
+          APOLLO_046_SHA256: 42b2aefaacb3474511517a56b96ee9f0517f30ac38b5dd2fda9fd5b478f5021a
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri $env:APOLLO_046_URL -OutFile apollo-046.exe
+          $hash = (Get-FileHash apollo-046.exe -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:APOLLO_046_SHA256) { throw "Installer hash mismatch: $hash" }
+
+          7z x apollo-046.exe -oapollo-046 -y | Out-Null
+          $drv = 'src_assets/windows/drivers/sudovda'
+          foreach ($name in 'SudoVDA.dll', 'nefconc.exe', 'sudovda.cat') {
+            $found = @(Get-ChildItem -Recurse apollo-046 -File | Where-Object { $_.Name -ieq $name })
+            if ($found.Count -ne 1) { throw "Expected one $name in the installer, found $($found.Count)" }
+            Set-Variable -Name ("src_" + ($name -replace '\W','_')) -Value $found[0].FullName
+            Write-Host "$name -> $($found[0].FullName)"
+          }
+
+          $catRepo = (Get-FileHash "$drv/sudovda.cat").Hash
+          $catRel = (Get-FileHash $src_sudovda_cat).Hash
+          if ($catRepo -ne $catRel) { throw "sudovda.cat in tree ($catRepo) differs from v0.4.6 ($catRel)" }
+
+          Copy-Item $src_SudoVDA_dll "$drv/SudoVDA.dll"
+          Copy-Item $src_nefconc_exe "$drv/nefconc.exe"
+          Get-ChildItem $drv | Format-Table Name, Length
+          Get-FileHash "$drv/*" | Format-Table Hash, Path
+
       # docs/building.md: use the official Node.js build, not the MSYS2 one
       # (the MSYS2 package crashes on process init with the gcc-16 libstdc++).
       - name: Setup Node.js
