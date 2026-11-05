@@ -7,7 +7,10 @@
 > verification bypass), which was backported to upstream `master` in
 > [#1496](https://github.com/ClassicOldSong/Apollo/pull/1496) but not released yet.
 > This fork only adds a GitHub Actions workflow (`.github/workflows/build-windows.yml`) that builds the Windows
-> installer from `master`. No source changes. Builds are not signed. Please report bugs in Apollo itself upstream.
+> installer from `master`, plus one build fix: `master` does not compile on Windows since c71ea0a8
+> (`config_t` has no `profile` field in the AMF H.264 options), fixed the same way as
+> [#1497](https://github.com/ClassicOldSong/Apollo/pull/1497). Builds are not signed.
+> Please report bugs in Apollo itself upstream.
 
 Apollo is a self-hosted desktop stream host for [Artemis(Moonlight Noir)](https://github.com/ClassicOldSong/moonlight-android). Offering low latency, native client resolution, cloud gaming server capabilities with support for AMD, Intel, and Nvidia GPUs for hardware encoding. Software encoding is also available. A web UI is provided to allow configuration and client pairing from your favorite web browser. Pair from the local server or any mobile device.
 
