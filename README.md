@@ -12,6 +12,14 @@
 > [#1497](https://github.com/ClassicOldSong/Apollo/pull/1497). The SudoVDA driver binaries (`SudoVDA.dll`,
 > `nefconc.exe`) are not in git, so the workflow takes them from the official v0.4.6 installer (pinned by sha256,
 > driver catalog checked against the one in the tree). Builds are not signed.
+>
+> Virtual display fixes in this fork (Windows):
+> - wait up to 5 s (was ~0.6 s) for Windows to give the new virtual display a name;
+> - if it is still not active after 1.5 s (typically because Windows restored a *Duplicate* topology),
+>   switch the topology to *Extend* once;
+> - when display device configuration is left disabled (the default), make the virtual display primary for the
+>   session, so new windows open on the streamed display (the old "Enforce Virtual Display Primary" logic was removed
+>   in 4b78e3b4).
 > Please report bugs in Apollo itself upstream.
 
 Apollo is a self-hosted desktop stream host for [Artemis(Moonlight Noir)](https://github.com/ClassicOldSong/moonlight-android). Offering low latency, native client resolution, cloud gaming server capabilities with support for AMD, Intel, and Nvidia GPUs for hardware encoding. Software encoding is also available. A web UI is provided to allow configuration and client pairing from your favorite web browser. Pair from the local server or any mobile device.

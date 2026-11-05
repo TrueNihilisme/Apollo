@@ -288,6 +288,7 @@ namespace proc {
           target_fps *= 2;
         }
 
+        const auto vdisplay_create_start = std::chrono::steady_clock::now();
         std::wstring vdisplayName = VDISPLAY::createVirtualDisplay(
           device_uuid_str.c_str(),
           device_name.c_str(),
@@ -296,6 +297,10 @@ namespace proc {
           target_fps,
           launch_session->display_guid
         );
+        // createVirtualDisplay() only prints to stdout, which does not reach the log file.
+        BOOST_LOG(info) << "Virtual Display creation took "
+                        << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - vdisplay_create_start).count()
+                        << " ms";
 
         // No matter we get the display name or not, the virtual display might still be created.
         // We need to track it properly to remove the display when the session terminates.
@@ -334,7 +339,19 @@ namespace proc {
       }
     }
 
-    display_device::configure_display(config::video, *launch_session);
+    if (this->virtual_display && config::video.dd.configuration_option == config::video_t::dd_t::config_option_e::disabled) {
+      // Since 4b78e3b4 the "Enforce Virtual Display Primary" logic is gone and
+      // display configuration is disabled by default, so the virtual display
+      // stays secondary and new windows open on the physical screen instead of
+      // the streamed one. When the user has not configured display devices
+      // themselves, make the virtual display primary for this session.
+      auto video_config = config::video;
+      video_config.dd.configuration_option = config::video_t::dd_t::config_option_e::ensure_primary;
+      BOOST_LOG(info) << "Display device configuration is disabled, making virtual display " << this->display_name << " primary for this session";
+      display_device::configure_display(video_config, *launch_session);
+    } else {
+      display_device::configure_display(config::video, *launch_session);
+    }
 
     // We should not preserve display state when using virtual display.
     // It is already handled by Windows properly.

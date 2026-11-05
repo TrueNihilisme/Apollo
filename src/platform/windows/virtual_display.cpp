@@ -671,15 +671,40 @@ std::wstring createVirtualDisplay(
 		return std::wstring();
 	}
 
+	// Wait for Windows to activate the new display and give it a GDI name.
+	//
+	// The previous loop gave up after ~620 ms, which is not enough on slower
+	// machines (see ClassicOldSong/Apollo discussion #1554). Another common
+	// cause is Windows restoring a "Duplicate" topology: the virtual display
+	// lives on its own adapter and cannot be cloned there, so its path never
+	// becomes active and the lookup never succeeds. If it is still not active
+	// after VDISPLAY_EXTEND_AFTER_MS, switch to "Extend" once, which activates
+	// every connected display (same as Win+P -> Extend; Windows remembers it).
+	constexpr ULONGLONG VDISPLAY_NAME_TIMEOUT_MS = 5000;
+	constexpr ULONGLONG VDISPLAY_EXTEND_AFTER_MS = 1500;
+	constexpr uint32_t VDISPLAY_MAX_RETRY_INTERVAL_MS = 500;
+
+	const ULONGLONG started = GetTickCount64();
 	uint32_t retryInterval = 20;
+	bool triedExtend = false;
 	wchar_t deviceName[CCHDEVICENAME]{};
 	while (!GetAddedDisplayName(output, deviceName)) {
-		Sleep(retryInterval);
-		if (retryInterval > 320) {
-			printf("[SUDOVDA] Cannot get name for newly added virtual display!\n");
+		const ULONGLONG elapsed = GetTickCount64() - started;
+		if (elapsed >= VDISPLAY_NAME_TIMEOUT_MS) {
+			printf("[SUDOVDA] Cannot get name for newly added virtual display after %llu ms!\n", elapsed);
 			return std::wstring();
 		}
-		retryInterval *= 2;
+
+		if (!triedExtend && elapsed >= VDISPLAY_EXTEND_AFTER_MS) {
+			triedExtend = true;
+			LONG status = SetDisplayConfig(0, nullptr, 0, nullptr, SDC_APPLY | SDC_TOPOLOGY_EXTEND);
+			printf("[SUDOVDA] Virtual display is not active after %llu ms, switched topology to Extend (status %ld)\n", elapsed, status);
+		}
+
+		Sleep(retryInterval);
+		if (retryInterval < VDISPLAY_MAX_RETRY_INTERVAL_MS) {
+			retryInterval *= 2;
+		}
 	}
 
 	wprintf(L"[SUDOVDA] Virtual display added successfully: %ls\n", deviceName);
